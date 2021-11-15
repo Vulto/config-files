@@ -1,0 +1,11 @@
+set r rate 200 25
+xmodmap "/home/vulto/.config/Xmodmap" &
+xmodmap -e 'clear lock' 
+picom -bcCf --unredir-if-possible --backend xr_glx_hybrid --vsync --use-damage --glx-no-stencil 
+hsetroot -clear 
+xset -dpms 
+xset s off 
+dwm &
+st -g 320x77 -e tmux
+#bitocra 426x108
+#terminus 319x77
