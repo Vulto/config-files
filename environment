@@ -1,10 +1,7 @@
-export PATH=/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games:/usr/sbin
+export PATH=/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games:/usr/sbin:$HOME/sources/scripts
 export TERM="tmux-256color"
 export FZF_DEFAULT_OPTS="--layout=reverse --height=20% -m -1 -0 -i -e"
 export EDITOR="nvim"
-export BROWSER="surf"
-export SPACEVIMDIR="/home/vulto/.config/SpaceVim.d"
+export BROWSER="qutebrowser"
 export LC_COLLATE=C
-export MEDNAFEN_HOME="/home/vulto/.config/mednafen"
 export LC_COLLATE=C
-export BUG_PROJECT="/home/vulto/.config/bug"
