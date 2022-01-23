@@ -1,4 +1,3 @@
-#
 # /etc/bash.bashrc
 #
 # If not running interactively, don't do anything
@@ -18,7 +17,6 @@ fi
 [[ $- == *i* ]] && source "/home/vulto/.config/fzf/shell/completion.bash" 2> /dev/null
 
 # Key bindings
-# ------------
 source "/home/vulto/.config/fzf/shell/key-bindings.bash"
 
 alias steam="steam -nofriendsui -nochatui"
