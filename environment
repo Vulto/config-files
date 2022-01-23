@@ -4,4 +4,3 @@ export FZF_DEFAULT_OPTS="--layout=reverse --height=20% -m -1 -0 -i -e"
 export EDITOR="nvim"
 export BROWSER="qutebrowser"
 export LC_COLLATE=C
-export LC_COLLATE=C
