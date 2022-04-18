@@ -1,7 +1,5 @@
-xmodmap "/home/vulto/.config/Xmodmap" -e 'clear lock' 
 while true; do
 dwm 2> ~/.config/dwmlog
 done
 #st -g 320x77 -e tmux
-#bitocra 426x108
 #terminus 319x77
