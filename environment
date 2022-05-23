@@ -1,6 +1,5 @@
 export PATH=/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games:/usr/sbin:$HOME/sources/scripts
 export TERM="tmux-256color"
-export FZF_DEFAULT_OPTS="--layout=reverse --height=20% -m -1 -0 -i -e"
 export EDITOR="nvim"
 export BROWSER="qutebrowser"
 export LC_COLLATE=C
