@@ -63,6 +63,10 @@ let g:netrw_browse_split = 3
 let g:netrw_altv = 1
 let g:netrw_winsize = 15
 
+"keybind to terminal in insert mode
+autocmd TermOpen * startinsert
+nnoremap <silent> <Leader>t :sp term://bash <CR>
+
 nnoremap <leader>h :wincmd h<CR>
 nnoremap <leader>j :wincmd j<CR>
 nnoremap <leader>k :wincmd k<CR>
