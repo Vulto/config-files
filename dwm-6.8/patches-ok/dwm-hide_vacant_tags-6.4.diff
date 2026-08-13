@@ -1,0 +1,45 @@
+From: local
+Subject: [PATCH] hide_vacant_tags adapted for dwm 6.8 + prior patches
+
+Hide unoccupied, unselected tags from the bar. Merged with
+appicons/alttags tag_icons drawing and click hit-testing.
+
+--- a/dwm.c
++++ b/dwm.c
+@@ -541,11 +541,14 @@
+ 	}
+ 	if (ev->window == selmon->barwin) {
+ 		i = x = occ = 0;
+-		/* Bitmask of occupied tags */
++		/* Bitmask of occupied tags (ignore clients on all tags) */
+ 		for (c = m->clients; c; c = c->next)
+-			occ |= c->tags;
++			occ |= c->tags == TAGMASK ? 0 : c->tags;
+ 
+ 		do {
++			/* Do not reserve space for vacant tags */
++			if (!(occ & 1 << i || m->tagset[m->seltags] & 1 << i))
++				continue;
+ 			const char *t = m->tag_icons[i]
+ 				? m->tag_icons[i]
+ 				: (occ & 1 << i ? alttags[i] : tags[i]);
+@@ -968,7 +971,8 @@
+ 	for (c = m->clients; c; c = c->next) {
+ 		if (c->appicon && strlen(c->appicon) > 0)
+ 			applyappicon(m->tag_icons, icons_per_tag, c);
+-		occ |= c->tags;
++		/* hide vacant tags: clients on all tags do not count as occupancy */
++		occ |= c->tags == TAGMASK ? 0 : c->tags;
+ 		if (c->isurgent)
+ 			urg |= c->tags;
+ 	}
+@@ -984,6 +988,9 @@
+ 
+ 	x = 0;
+ 	for (i = 0; i < LENGTH(tags); i++) {
++		/* Do not draw vacant tags */
++		if (!(occ & 1 << i || m->tagset[m->seltags] & 1 << i))
++			continue;
+ 		w = TEXTW(m->tag_icons[i]);
+ 		drw_setscheme(drw, scheme[m->tagset[m->seltags] & 1 << i ? SchemeSel : SchemeNorm]);
+ 		drw_text(drw, x, 0, w, bh, lrpad / 2, m->tag_icons[i], urg & 1 << i);

@@ -1,0 +1,72 @@
+From: local
+Subject: [PATCH] noborderselflickerfix adapted for dwm 6.8 + prior patches
+
+No border when sole tiled client or monocle via solitary().
+Skips border color set on focus when solitary (anti-flicker).
+Replaces functionalgaps-only noborder block in resizeclient.
+Keeps float-border-color ColFloat when not solitary.
+
+--- a/dwm.c
++++ b/dwm.c
+@@ -269,6 +269,7 @@
+ static void zoom(const Arg *arg);
+ static void autostart_exec(void);
+ static void sigchld(int unused);
++static int solitary(Client *c);
+ static void previewallwin(const Arg *arg);
+ static void setpreviewwindowsizepositions(unsigned int n, Monitor *m, unsigned int gappo, unsigned int gappi);
+ static XImage *getwindowximage(Client *c);
+@@ -1079,10 +1080,13 @@
+ 		detachstack(c);
+ 		attachstack(c);
+ 		grabbuttons(c, 1);
+-		if (c->isfloating)
+-			XSetWindowBorder(dpy, c->win, scheme[SchemeSel][ColFloat].pixel);
+-		else
+-			XSetWindowBorder(dpy, c->win, scheme[SchemeSel][ColBorder].pixel);
++		/* Avoid flickering when another client appears and the border is restored */
++		if (!solitary(c)) {
++			if (c->isfloating)
++				XSetWindowBorder(dpy, c->win, scheme[SchemeSel][ColFloat].pixel);
++			else
++				XSetWindowBorder(dpy, c->win, scheme[SchemeSel][ColBorder].pixel);
++		}
+                 if (!selmon->pertag->drawwithgaps[selmon->pertag->curtag] && !c->isfloating) {
+ 			XWindowChanges wc;
+                         wc.sibling = selmon->barwin;
+@@ -1633,14 +1637,11 @@
+ 	c->oldw = c->w; c->w = wc.width = w;
+ 	c->oldh = c->h; c->h = wc.height = h;
+ 	wc.border_width = c->bw;
+-	if (!selmon->pertag->drawwithgaps[selmon->pertag->curtag] && /* this is the noborderfloatingfix patch, slightly modified so that it will work if, and only if, gaps are disabled. */
+-	    (((nexttiled(c->mon->clients) == c && !nexttiled(c->next)) /* these two first lines are the only ones changed. if you are manually patching and have noborder installed already, just change these lines; or conversely, just remove this section if the noborder patch is not desired;) */
+-	    || &monocle == c->mon->lt[c->mon->sellt]->arrange))
+-	    && !c->isfullscreen && !c->isfloating
+-	    && NULL != c->mon->lt[c->mon->sellt]->arrange) {
+-	        c->w = wc.width += c->bw * 2;
+-	        c->h = wc.height += c->bw * 2;
+-	        wc.border_width = 0;
++	/* no border when sole tiled client or monocle (also avoids flicker) */
++	if (solitary(c)) {
++		c->w = wc.width += c->bw * 2;
++		c->h = wc.height += c->bw * 2;
++		wc.border_width = 0;
+ 	}
+ 	XConfigureWindow(dpy, c->win, CWX|CWY|CWWidth|CWHeight|CWBorderWidth, &wc);
+ 	configure(c);
+@@ -2076,6 +2077,15 @@
+ 	}
+ }
+ 
++int
++solitary(Client *c)
++{
++	return ((nexttiled(c->mon->clients) == c && !nexttiled(c->next))
++	    || &monocle == c->mon->lt[c->mon->sellt]->arrange)
++	    && !c->isfullscreen && !c->isfloating
++	    && NULL != c->mon->lt[c->mon->sellt]->arrange;
++}
++
+ void
+ spawn(const Arg *arg)
+ {

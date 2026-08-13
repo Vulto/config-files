@@ -1,0 +1,66 @@
+From: local
+Subject: [PATCH] ispermanent adapted for dwm 6.8 + prior patches
+
+Rule flag ispermanent blocks killclient. Rule columns:
+  tags, isfloating, ispermanent, isfakefullscreen, monitor, appicon
+
+--- a/config.def.h
++++ b/config.def.h
+@@ -52,9 +52,9 @@
+ 	 *	WM_CLASS(STRING) = instance, class
+ 	 *	WM_NAME(STRING) = title
+ 	 */
+-	/* class      instance    title       tags mask     isfloating   isfakefullscreen  monitor  appicon */
+-	{ "Gimp",     NULL,       NULL,       0,            1,           0,                -1,      NULL },
+-	{ "Firefox",  NULL,       NULL,       1 << 8,       0,           1,                -1,      "󰈹"  },
++	/* class      instance    title       tags mask     isfloating  ispermanent  isfakefullscreen  monitor  appicon */
++	{ "Gimp",     NULL,       NULL,       0,            1,          0,           0,                -1,      NULL },
++	{ "Firefox",  NULL,       NULL,       1 << 8,       0,          0,           1,                -1,      "󰈹"  },
+ };
+ 
+ /* layout(s) */
+--- a/dwm.c
++++ b/dwm.c
+@@ -108,7 +108,7 @@
+ 	int basew, baseh, incw, inch, maxw, maxh, minw, minh, hintsvalid;
+ 	int bw, oldbw;
+ 	unsigned int tags;
+-	int isfixed, isfloating, isurgent, neverfocus, oldstate, isfullscreen, isfakefullscreen;
++	int isfixed, ispermanent, isfloating, isurgent, neverfocus, oldstate, isfullscreen, isfakefullscreen;
+ 	Client *next;
+ 	Client *snext;
+ 	Monitor *mon;
+@@ -159,9 +159,10 @@
+ 	const char *title;
+ 	unsigned int tags;
+ 	int isfloating;
++	int ispermanent;
+ 	int isfakefullscreen;
+ 	int monitor;
+-    const char *appicon;
++	const char *appicon;
+ } Rule;
+ 
+ /* function declarations */
+@@ -408,9 +409,10 @@
+ 		&& (!r->class || strstr(class, r->class))
+ 		&& (!r->instance || strstr(instance, r->instance)))
+ 		{
+-            /* r->appicon is static, so lifetime is sufficient */
+-            c->appicon = (char*) r->appicon; 
++			/* r->appicon is static, so lifetime is sufficient */
++			c->appicon = (char*) r->appicon;
+ 			c->isfloating = r->isfloating;
++			c->ispermanent = r->ispermanent;
+ 			c->isfakefullscreen = r->isfakefullscreen;
+ 			c->tags |= r->tags;
+ 			for (m = mons; m && m->num != r->monitor; m = m->next);
+@@ -1298,7 +1300,7 @@
+ void
+ killclient(const Arg *arg)
+ {
+-	if (!selmon->sel)
++	if (!selmon->sel || selmon->sel->ispermanent)
+ 		return;
+ 	if (!sendevent(selmon->sel, wmatom[WMDelete])) {
+ 		XGrabServer(dpy);

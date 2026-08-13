@@ -1,5 +1,0 @@
-export PATH=/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games:/usr/sbin:$HOME/sources/sh
-export EDITOR="vim"
-export BROWSER="qutebrowser"
-export LC_COLLATE=C
-export PAGER="bat"

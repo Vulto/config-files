@@ -1,5 +1,0 @@
-while true; do
-dwm 2> ~/.config/dwmlog
-done
-#st -g 320x77 -e tmux
-#terminus 319x77

@@ -1,0 +1,16 @@
+From: local
+Subject: [PATCH] alwayscenter adapted for dwm 6.8 + prior patches
+
+Center newly managed clients on their monitor.
+
+--- a/dwm.c
++++ b/dwm.c
+@@ -1079,6 +1079,8 @@
+ 	updatewindowtype(c);
+ 	updatesizehints(c);
+ 	updatewmhints(c);
++	c->x = c->mon->mx + (c->mon->mw - WIDTH(c)) / 2;
++	c->y = c->mon->my + (c->mon->mh - HEIGHT(c)) / 2;
+ 	XSelectInput(dpy, w, EnterWindowMask|FocusChangeMask|PropertyChangeMask|StructureNotifyMask);
+ 	grabbuttons(c, 0);
+ 	if (!c->isfloating)
