@@ -5,9 +5,8 @@
  *
  * font: see http://freedesktop.org/software/fontconfig/fontconfig-user.html
  */
-static char *font = "iosevka:pixelsize=14:antialias=true:autohint=true";
-static int borderpx = 1;
-
+static char *font = "iosevka:pixelsize=16:antialias=true:autohint=true," "Font Awesome 6 Free Solid:size=11";
+static int borderpx = 10;
 /*
  * What program is execed by st depends of these precedence rules:
  * 1: program passed with -e
@@ -94,7 +93,7 @@ char *termname = "st-256color";
 unsigned int tabspaces = 8;
 
 /* Terminal colors (16 first used in escape sequence) */
-static const char *colorname[] = {
+static const char *colorsdark[] = {
 	/* 8 normal colors */
 	"black",
 	"red3",
@@ -121,8 +120,40 @@ static const char *colorname[] = {
 	"#cccccc",
 	"#555555",
 	"gray90", /* default foreground colour */
-	"black", /* default background colour */
+	"#2B303B", /* default background colour */
 };
+
+/* PaperColor light — matches dwm light mode */
+static const char *colorslight[] = {
+	/* 8 normal colors */
+	"#eeeeee",
+	"#af0000",
+	"#008700",
+	"#5f8700",
+	"#0087af",
+	"#878787",
+	"#005f87",
+	"#444444",
+
+	/* 8 bright colors */
+	"#bcbcbc",
+	"#d70000",
+	"#d70087",
+	"#8700af",
+	"#d75f00",
+	"#d75f00",
+	"#005faf",
+	"#005f87",
+
+	[255] = 0,
+
+	"#444444",
+	"#eeeeee",
+	"#444444", /* default foreground colour */
+	"#eeeeee", /* default background colour */
+};
+
+static const char *const *colorname = colorsdark;
 
 
 /*

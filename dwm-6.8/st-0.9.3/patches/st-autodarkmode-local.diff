@@ -1,0 +1,211 @@
+From: local
+Subject: [PATCH] st autodarkmode matched to dwm PaperColor toggle
+
+Two palettes (current dark + PaperColor light). Startup and
+ST_COLORMODE ClientMessage reload ~/.config/dwm/.lightmode.
+
+--- a/config.h
++++ b/config.h
+@@ -90,13 +90,13 @@
+  *
+  *	stty tabs
+  */
+ unsigned int tabspaces = 8;
+ 
+ /* Terminal colors (16 first used in escape sequence) */
+-static const char *colorname[] = {
++static const char *colorsdark[] = {
+ 	/* 8 normal colors */
+ 	"black",
+ 	"red3",
+ 	"green3",
+ 	"yellow3",
+ 	"blue2",
+@@ -120,12 +120,44 @@
+ 	"#cccccc",
+ 	"#555555",
+ 	"gray90", /* default foreground colour */
+ 	"#2B303B", /* default background colour */
+ };
+ 
++/* PaperColor light — matches dwm light mode */
++static const char *colorslight[] = {
++	/* 8 normal colors */
++	"#eeeeee",
++	"#af0000",
++	"#008700",
++	"#5f8700",
++	"#0087af",
++	"#878787",
++	"#005f87",
++	"#444444",
++
++	/* 8 bright colors */
++	"#bcbcbc",
++	"#d70000",
++	"#d70087",
++	"#8700af",
++	"#d75f00",
++	"#d75f00",
++	"#005faf",
++	"#005f87",
++
++	[255] = 0,
++
++	"#444444",
++	"#eeeeee",
++	"#444444", /* default foreground colour */
++	"#eeeeee", /* default background colour */
++};
++
++static const char *const *colorname = colorsdark;
++
+ 
+ /*
+  * Default colors (colorname index)
+  * foreground, background, cursor, reverse cursor
+  */
+ unsigned int defaultfg = 258;
+--- a/x.c
++++ b/x.c
+@@ -1,12 +1,15 @@
+ /* See LICENSE for license details. */
+ #include <errno.h>
+ #include <math.h>
+ #include <limits.h>
+ #include <locale.h>
+ #include <signal.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
+ #include <sys/select.h>
+ #include <time.h>
+ #include <unistd.h>
+ #include <libgen.h>
+ #include <X11/Xatom.h>
+ #include <X11/Xlib.h>
+@@ -56,12 +59,13 @@
+ static void numlock(const Arg *);
+ static void selpaste(const Arg *);
+ static void zoom(const Arg *);
+ static void zoomabs(const Arg *);
+ static void zoomreset(const Arg *);
+ static void ttysend(const Arg *);
++static void setcolormode(void);
+ 
+ /* config.h for applying patches and the configuration. */
+ #include "config.h"
+ 
+ /* XEMBED messages */
+ #define XEMBED_FOCUS_IN  4
+@@ -91,13 +95,13 @@
+ typedef struct {
+ 	Display *dpy;
+ 	Colormap cmap;
+ 	Window win;
+ 	Drawable buf;
+ 	GlyphFontSpec *specbuf; /* font spec buffer used for rendering */
+-	Atom xembed, wmdeletewin, netwmname, netwmiconname, netwmpid;
++	Atom xembed, wmdeletewin, netwmname, netwmiconname, netwmpid, stcolormode;
+ 	struct {
+ 		XIM xim;
+ 		XIC xic;
+ 		XPoint spot;
+ 		XVaNestedList spotlist;
+ 	} ime;
+@@ -803,13 +807,13 @@
+ 	Color *cp;
+ 
+ 	if (loaded) {
+ 		for (cp = dc.col; cp < &dc.col[dc.collen]; ++cp)
+ 			XftColorFree(xw.dpy, xw.vis, xw.cmap, cp);
+ 	} else {
+-		dc.collen = MAX(LEN(colorname), 256);
++		dc.collen = 260;
+ 		dc.col = xmalloc(dc.collen * sizeof(Color));
+ 	}
+ 
+ 	for (i = 0; i < dc.collen; i++)
+ 		if (!xloadcolor(i, NULL, &dc.col[i])) {
+ 			if (colorname[i])
+@@ -1225,12 +1229,13 @@
+ 	xw.xembed = XInternAtom(xw.dpy, "_XEMBED", False);
+ 	xw.wmdeletewin = XInternAtom(xw.dpy, "WM_DELETE_WINDOW", False);
+ 	xw.netwmname = XInternAtom(xw.dpy, "_NET_WM_NAME", False);
+ 	xw.netwmiconname = XInternAtom(xw.dpy, "_NET_WM_ICON_NAME", False);
+ 	XSetWMProtocols(xw.dpy, xw.win, &xw.wmdeletewin, 1);
+ 
++	xw.stcolormode = XInternAtom(xw.dpy, "ST_COLORMODE", False);
+ 	xw.netwmpid = XInternAtom(xw.dpy, "_NET_WM_PID", False);
+ 	XChangeProperty(xw.dpy, xw.win, xw.netwmpid, XA_CARDINAL, 32,
+ 			PropModeReplace, (uchar *)&thispid, 1);
+ 
+ 	win.mode = MODE_NUMLOCK;
+ 	resettitle();
+@@ -1907,12 +1912,14 @@
+ 		if (e->xclient.data.l[1] == XEMBED_FOCUS_IN) {
+ 			win.mode |= MODE_FOCUSED;
+ 			xseturgency(0);
+ 		} else if (e->xclient.data.l[1] == XEMBED_FOCUS_OUT) {
+ 			win.mode &= ~MODE_FOCUSED;
+ 		}
++	} else if (e->xclient.message_type == xw.stcolormode) {
++		setcolormode();
+ 	} else if (e->xclient.data.l[0] == xw.wmdeletewin) {
+ 		ttyhangup();
+ 		exit(0);
+ 	}
+ }
+ 
+@@ -2038,12 +2045,36 @@
+ 	    "       %s [-aiv] [-c class] [-f font] [-g geometry]"
+ 	    " [-n name] [-o file]\n"
+ 	    "          [-T title] [-t title] [-w windowid] -l line"
+ 	    " [stty_args ...]\n", argv0, argv0);
+ }
+ 
++void
++setcolormode(void)
++{
++	static const char *file = ".config/dwm/.lightmode";
++	static char *path = NULL;
++	const char *home;
++	size_t size;
++
++	if (!path && (home = getenv("HOME"))) {
++		size = strlen(home) + 1 + strlen(file) + 1;
++		path = malloc(size);
++		if (!path)
++			die("malloc failed");
++		snprintf(path, size, "%s/%s", home, file);
++	}
++
++	colorname = (path && access(path, F_OK) == 0) ? colorslight : colorsdark;
++
++	if (xw.dpy) {
++		xloadcols();
++		redraw();
++	}
++}
++
+ int
+ main(int argc, char *argv[])
+ {
+ 	xw.l = xw.t = 0;
+ 	xw.isfixed = False;
+ 	xsetcursor(cursorshape);
+@@ -2096,12 +2127,14 @@
+ 	if (argc > 0) /* eat all remaining arguments */
+ 		opt_cmd = argv;
+ 
+ 	if (!opt_title)
+ 		opt_title = (opt_line || !opt_cmd) ? "st" : opt_cmd[0];
+ 
++	setcolormode();
++
+ 	setlocale(LC_CTYPE, "");
+ 	XSetLocaleModifiers("");
+ 	cols = MAX(cols, 1);
+ 	rows = MAX(rows, 1);
+ 	tnew(cols, rows);
+ 	xinit(cols, rows);

@@ -1,0 +1,45 @@
+From: local
+Subject: [PATCH] clientindicators adapted for dwm 6.8 + prior patches
+
+Draw a 1px tick per client on each tag icon; the focused client is a
+6px bar. Uses tag_icons (appicons/alttags). Occupied box stays gone.
+
+--- a/dwm.c
++++ b/dwm.c
+@@ -994,12 +994,13 @@
+ }
+ 
+ void
+ drawbar(Monitor *m)
+ {
+ 	int x, w, tw = 0;
++	int indn;
+ 	int boxs = drw->fonts->h / 9;
+ 	int boxw = drw->fonts->h / 6 + 2;
+ 	unsigned int i, occ = 0, urg = 0;
+ 	int icons_per_tag[LENGTH(tags)];
+ 	Client *c;
+ 
+@@ -1054,15 +1055,22 @@
+ 			m->tag_icons[i] = strndup(base, strlen(base));
+ 		}
+ 	}
+ 
+ 	x = 0;
+ 	for (i = 0; i < LENGTH(tags); i++) {
++		indn = 0;
+ 		w = TEXTW(m->tag_icons[i]);
+ 		drw_setscheme(drw, scheme[m->tagset[m->seltags] & 1 << i ? SchemeSel : SchemeNorm]);
+ 		drw_text(drw, x, 0, w, bh, lrpad / 2, m->tag_icons[i], urg & 1 << i);
++		for (c = m->clients; c; c = c->next) {
++			if (c->tags & (1 << i)) {
++				drw_rect(drw, x, 1 + (indn * 2), selmon->sel == c ? 6 : 1, 1, 1, urg & 1 << i);
++				indn++;
++			}
++		}
+ 		x += w;
+ 	}
+ 	w = TEXTW(m->ltsymbol);
+ 	drw_setscheme(drw, scheme[SchemeNorm]);
+ 	x = drw_text(drw, x, 0, w, bh, lrpad / 2, m->ltsymbol, 0);
+ 

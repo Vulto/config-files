@@ -7,7 +7,7 @@ static const unsigned int alpha = 0xe9;     /* Amount of opacity. 0xff is opaque
 
 static unsigned int barpadh	= 750;
 static unsigned int barpadv	= 10;
-static unsigned int barheight	= 2;
+static unsigned int barheight	= 4;
 static unsigned int barborder	= 0;
 
 /* -fn option overrides fonts[0]; default X11 font or font set */

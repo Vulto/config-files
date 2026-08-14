@@ -1,49 +1,61 @@
 From: local
-Subject: [PATCH] fullscreen adapted for dwm 6.8 + prior patches
+Subject: [PATCH] fullscreen: Super+f is real client fullscreen
 
-Mod+Shift+f toggles monocle layout and bar. Uses pertag layout
-index to avoid toggle loop.
+Super+f toggles EWMH fullscreen on the selected client (mx/my/mw/mh),
+covering bar, bottom reserve, and tile gaps. Does not change pertag
+layout, gaps, or bar. Super+Shift+f keeps monocle + bar toggle.
 
---- a/config.def.h
-+++ b/config.def.h
-@@ -105,6 +105,7 @@
- 	{ MODKEY,                       XK_t,      setlayout,      {.v = &layouts[0]} },
- 	{ MODKEY,                       XK_f,      setlayout,      {.v = &layouts[1]} },
- 	{ MODKEY,                       XK_m,      setlayout,      {.v = &layouts[2]} },
-+	{ MODKEY|ShiftMask,             XK_f,      fullscreen,     {0} },
- 	{ MODKEY,                       XK_space,  setlayout,      {0} },
- 	{ MODKEY|ShiftMask,             XK_space,  togglefloating, {0} },
- 	{ MODKEY,                       XK_0,      view,           {.ui = ~0 } },
+--- a/config.h
++++ b/config.h
+@@ -121,13 +121,14 @@
+ 	{ MODKEY,           XK_a,		      toggleopacity,  {0} },
+ 	{ MODKEY,	    XK_b,		      togglebar,      {0} },
+ 	{ MODKEY,	    XK_b,	              spawn,	      SHCMD("pgrep -x dwmblocks >/dev/null && pkill -x dwmblocks || dwmblocks &") },
+ 	{ MODKEY,           XK_c, 		      killclient,     {0} },
+ 	{ MODKEY,	    XK_d,		      spawndmenu,     {0} },
+ 	{ MODKEY,           XK_t,                     togglecolormode,{0} },
+-	{ MODKEY,	    XK_f,                     fullscreen,     {0} },
++	{ MODKEY,	    XK_f,                     togglefullscr,  {0} },
++	{ MODKEY|ShiftMask, XK_f,                     fullscreen,     {0} },
+ 	{ MODKEY,	    XK_h,		      setmfact,	      {.f = -0.05} },
+ 	{ MODKEY,	    XK_j,		      focusstack,     {.i = +1 } },
+ 	{ MODKEY,           XK_k,		      focusstack,     {.i = -1 } },
+ 	{ MODKEY,	    XK_l,		      setmfact,	      {.f = +0.05} },
+ 	{ MODKEY,	    XK_m,		      spawn,          SHCMD("st -e wiremix") },
+ 	{ MODKEY,	    XK_n,		      spawn,          SHCMD("wall") },
 --- a/dwm.c
 +++ b/dwm.c
-@@ -228,6 +228,7 @@
+@@ -236,12 +236,13 @@
  static void setclienttagprop(Client *c);
+ static void setcolormode(void);
+ static void togglecolormode(const Arg *arg);
  static void setfocus(Client *c);
  static void setfullscreen(Client *c, int fullscreen);
-+static void fullscreen(const Arg *arg);
+ static void fullscreen(const Arg *arg);
++static void togglefullscr(const Arg *arg);
  static void setgaps(const Arg *arg);
  static void setlayout(const Arg *arg);
  static void setmfact(const Arg *arg);
-@@ -1901,6 +1902,22 @@
- 	arrange(selmon);
+ static void setup(void);
+ static void seturgent(Client *c, int urg);
+ static void showhide(Client *c);
+@@ -2120,12 +2121,19 @@
+ 		if (!selmon->showbar)
+ 			togglebar(arg);
+ 	}
  }
  
-+Layout *last_layout;
-+void
-+fullscreen(const Arg *arg)
+ void
++togglefullscr(const Arg *arg)
 +{
-+	if (selmon->pertag->ltidxs[selmon->pertag->curtag][selmon->sellt] != &layouts[2]) {
-+		for(last_layout = (Layout *)layouts; last_layout != selmon->lt[selmon->sellt]; last_layout++);
-+		setlayout(&((Arg) { .v = &layouts[2] }));
-+		if (selmon->showbar)
-+			togglebar(arg);
-+	} else {
-+		setlayout(&((Arg) { .v = last_layout }));
-+		if (!selmon->showbar)
-+			togglebar(arg);
-+	}
++	if (selmon->sel)
++		setfullscreen(selmon->sel, !selmon->sel->isfullscreen);
 +}
 +
- void
++void
  setlayout(const Arg *arg)
  {
+ 	if (!arg || !arg->v || arg->v != selmon->lt[selmon->sellt])
+ 		selmon->sellt = selmon->pertag->sellts[selmon->pertag->curtag] ^= 1;
+ 	if (arg && arg->v)
+ 		selmon->lt[selmon->sellt] = selmon->pertag->ltidxs[selmon->pertag->curtag][selmon->sellt] = (Layout *)arg->v;

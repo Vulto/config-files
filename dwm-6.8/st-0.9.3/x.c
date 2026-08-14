@@ -4,6 +4,9 @@
 #include <limits.h>
 #include <locale.h>
 #include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <sys/select.h>
 #include <time.h>
 #include <unistd.h>
@@ -59,6 +62,7 @@ static void zoom(const Arg *);
 static void zoomabs(const Arg *);
 static void zoomreset(const Arg *);
 static void ttysend(const Arg *);
+static void setcolormode(void);
 
 /* config.h for applying patches and the configuration. */
 #include "config.h"
@@ -94,7 +98,7 @@ typedef struct {
 	Window win;
 	Drawable buf;
 	GlyphFontSpec *specbuf; /* font spec buffer used for rendering */
-	Atom xembed, wmdeletewin, netwmname, netwmiconname, netwmpid;
+	Atom xembed, wmdeletewin, netwmname, netwmiconname, netwmpid, stcolormode;
 	struct {
 		XIM xim;
 		XIC xic;
@@ -219,6 +223,7 @@ static void (*handler[LASTEvent])(XEvent *) = {
 /* Globals */
 static DC dc;
 static XWindow xw;
+
 static XSelection xsel;
 static TermWindow win;
 
@@ -805,7 +810,7 @@ xloadcols(void)
 		for (cp = dc.col; cp < &dc.col[dc.collen]; ++cp)
 			XftColorFree(xw.dpy, xw.vis, xw.cmap, cp);
 	} else {
-		dc.collen = MAX(LEN(colorname), 256);
+		dc.collen = 260;
 		dc.col = xmalloc(dc.collen * sizeof(Color));
 	}
 
@@ -1227,6 +1232,7 @@ xinit(int cols, int rows)
 	xw.netwmiconname = XInternAtom(xw.dpy, "_NET_WM_ICON_NAME", False);
 	XSetWMProtocols(xw.dpy, xw.win, &xw.wmdeletewin, 1);
 
+	xw.stcolormode = XInternAtom(xw.dpy, "ST_COLORMODE", False);
 	xw.netwmpid = XInternAtom(xw.dpy, "_NET_WM_PID", False);
 	XChangeProperty(xw.dpy, xw.win, xw.netwmpid, XA_CARDINAL, 32,
 			PropModeReplace, (uchar *)&thispid, 1);
@@ -1909,6 +1915,8 @@ cmessage(XEvent *e)
 		} else if (e->xclient.data.l[1] == XEMBED_FOCUS_OUT) {
 			win.mode &= ~MODE_FOCUSED;
 		}
+	} else if (e->xclient.message_type == xw.stcolormode) {
+		setcolormode();
 	} else if (e->xclient.data.l[0] == xw.wmdeletewin) {
 		ttyhangup();
 		exit(0);
@@ -2040,6 +2048,30 @@ usage(void)
 	    " [stty_args ...]\n", argv0, argv0);
 }
 
+void
+setcolormode(void)
+{
+	static const char *file = ".config/dwm/.lightmode";
+	static char *path = NULL;
+	const char *home;
+	size_t size;
+
+	if (!path && (home = getenv("HOME"))) {
+		size = strlen(home) + 1 + strlen(file) + 1;
+		path = malloc(size);
+		if (!path)
+			die("malloc failed");
+		snprintf(path, size, "%s/%s", home, file);
+	}
+
+	colorname = (path && access(path, F_OK) == 0) ? colorslight : colorsdark;
+
+	if (xw.dpy) {
+		xloadcols();
+		redraw();
+	}
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -2097,6 +2129,8 @@ run:
 
 	if (!opt_title)
 		opt_title = (opt_line || !opt_cmd) ? "st" : opt_cmd[0];
+
+	setcolormode();
 
 	setlocale(LC_CTYPE, "");
 	XSetLocaleModifiers("");

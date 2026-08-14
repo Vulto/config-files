@@ -1,0 +1,369 @@
+From: local
+Subject: [PATCH] autodarkmode adapted for dwm 6.8 + prior patches
+
+Dark/PaperColor light via ~/.config/dwm/.lightmode. Super+t toggles.
+SIGHUP re-reads the file. dmenu follows on spawn. Open st windows
+are notified with an ST_COLORMODE ClientMessage (no signals).
+
+--- a/config.h
++++ b/config.h
+@@ -26,17 +26,27 @@
+ static unsigned int borderalpha     = OPAQUE;
+ static const char col_gray1[]       = "#999999";
+ static const char col_gray2[]       = "#282828";
+ static const char col_gray3[]       = "#0000aa";
+ static const char col_gray4[]       = "#2B303B";
+ static const char col_cyan[]        = "#005577";
+-static const char *colors[][4]      = {
++/* PaperColor light */
++static const char col_paper_fg[]    = "#444444";
++static const char col_paper_bg[]    = "#eeeeee";
++static const char col_paper_brd[]   = "#d0d0d0";
++static const char col_paper_acc[]   = "#005f87";
++static const char *colorsdark[][4]      = {
+ 	/*               fg         bg         border     float */
+ 	[SchemeNorm] = { col_gray1, col_gray4, col_gray2, col_gray2 },
+ 	[SchemeSel]  = { col_gray1, col_gray4, col_gray2, col_cyan },
+ };
++static const char *colorslight[][4]     = {
++	/*               fg           bg           border        float */
++	[SchemeNorm] = { col_paper_fg, col_paper_bg, col_paper_brd, col_paper_brd },
++	[SchemeSel]  = { col_paper_fg, col_paper_bg, col_paper_brd, col_paper_acc },
++};
+ 
+ static const char *const autostart[] = {
+ 	"dwmblocks", NULL,
+ 	"xset", "r","rate","180","25", "m","0","0", "-dpms", "s", "off", NULL,
+ 	"setxkbmap", "-option", "caps:swapescape", NULL,
+ 	"xhidecursor", NULL,
+@@ -98,24 +108,26 @@
+ /* helper for spawning shell commands in the pre dwm-5.0 fashion */
+ #define SHCMD(cmd) { .v = (const char*[]){ "/bin/sh", "-c", cmd, NULL } }
+ 
+ #define STATUSBAR "dwmblocks"
+ 
+ /* commands */
+-static char dmenumon[2] = "0"; /* component of dmenucmd, manipulated in spawn() */
+-static const char *dmenucmd[] = { "dmenu_run", "-m", dmenumon, "-fn", dmenufont, "-nb", col_gray1, "-nf", col_gray3, "-sb", col_cyan, "-sf", col_gray4, NULL };
++static char dmenumon[2] = "0"; /* component of dmenu{dark,light}, manipulated in spawndmenu() */
++static const char *dmenudark[]  = { "dmenu_run", "-m", dmenumon, "-fn", dmenufont, "-nb", col_gray4, "-nf", col_gray1, "-sb", col_cyan, "-sf", col_gray1, NULL };
++static const char *dmenulight[] = { "dmenu_run", "-m", dmenumon, "-fn", dmenufont, "-nb", col_paper_bg, "-nf", col_paper_fg, "-sb", col_paper_acc, "-sf", col_paper_bg, NULL };
+ static const char *termcmd[]  = { "st", NULL };
+ 
+ static const Key keys[] = {
+ 	/* modifier         key		  	      function        argument */
+ 	{ MODKEY,           XK_Return,		      spawn,	      SHCMD("st") },
+ 	{ MODKEY,           XK_a,		      toggleopacity,  {0} },
+ 	{ MODKEY,	    XK_b,		      togglebar,      {0} },
+ 	{ MODKEY,	    XK_b,	              spawn,	      SHCMD("pgrep -x dwmblocks >/dev/null && pkill -x dwmblocks || dwmblocks &") },
+ 	{ MODKEY,           XK_c, 		      killclient,     {0} },
+-	{ MODKEY,	    XK_d,		      spawn,	      SHCMD("dmenu_run") },
++	{ MODKEY,	    XK_d,		      spawndmenu,     {0} },
++	{ MODKEY,           XK_t,                     togglecolormode,{0} },
+ 	{ MODKEY,	    XK_f,                     fullscreen,     {0} },
+ 	{ MODKEY,	    XK_h,		      setmfact,	      {.f = -0.05} },
+ 	{ MODKEY,	    XK_j,		      focusstack,     {.i = +1 } },
+ 	{ MODKEY,           XK_k,		      focusstack,     {.i = -1 } },
+ 	{ MODKEY,	    XK_l,		      setmfact,	      {.f = +0.05} },
+ 	{ MODKEY,	    XK_m,		      spawn,          SHCMD("st -e wiremix") },
+--- a/dwm.c
++++ b/dwm.c
+@@ -25,12 +25,14 @@
+ #include <signal.h>
+ #include <stdarg.h>
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
+ #include <unistd.h>
++#include <fcntl.h>
++#include <sys/stat.h>
+ #include <sys/types.h>
+ #include <sys/wait.h>
+ #include <X11/cursorfont.h>
+ #include <X11/keysym.h>
+ #include <X11/Xatom.h>
+ #include <X11/Xlib.h>
+@@ -177,12 +179,13 @@
+ static void attachstack(Client *c);
+ static void buttonpress(XEvent *e);
+ static void checkotherwm(void);
+ static void cleanup(void);
+ static void cleanupmon(Monitor *mon);
+ static void clientmessage(XEvent *e);
++static void colormodehandler(int sig);
+ static void configure(Client *c);
+ static void configurenotify(XEvent *e);
+ static void configurerequest(XEvent *e);
+ static Monitor *createmon(void);
+ static void destroynotify(XEvent *e);
+ static void detach(Client *c);
+@@ -228,23 +231,26 @@
+ static void run(void);
+ static void scan(void);
+ static int sendevent(Client *c, Atom proto);
+ static void sendmon(Client *c, Monitor *m);
+ static void setclientstate(Client *c, long state);
+ static void setclienttagprop(Client *c);
++static void setcolormode(void);
++static void togglecolormode(const Arg *arg);
+ static void setfocus(Client *c);
+ static void setfullscreen(Client *c, int fullscreen);
+ static void fullscreen(const Arg *arg);
+ static void setgaps(const Arg *arg);
+ static void setlayout(const Arg *arg);
+ static void setmfact(const Arg *arg);
+ static void setup(void);
+ static void seturgent(Client *c, int urg);
+ static void showhide(Client *c);
+ static void sigstatusbar(const Arg *arg);
+ static void spawn(const Arg *arg);
++static void spawndmenu(const Arg *arg);
+ static void tag(const Arg *arg);
+ static void tagmon(const Arg *arg);
+ static void centeredmaster(Monitor *m);
+ static void centeredfloatingmaster(Monitor *m);
+ static void togglebar(const Arg *arg);
+ static void togglefloating(const Arg *arg);
+@@ -310,21 +316,23 @@
+ 	[PropertyNotify] = propertynotify,
+ 	[UnmapNotify] = unmapnotify
+ };
+ static Atom wmatom[WMLast], netatom[NetLast];
+ static int running = 1;
+ static Cur *cursor[CurLast];
+-static Clr **scheme;
++static Clr **scheme, **schemedark, **schemelight;
+ static Display *dpy;
+ static Drw *drw;
+ static Monitor *mons, *selmon;
+ static Window root, wmcheckwin;
+ static int useargb = 0;
+ static Visual *visual;
+ static int depth;
+ static Colormap cmap;
++static const char **dmenucmd;
++static int colormodechanged;
+ 
+ /* configuration, allows nested code to access above variables */
+ #include "config.h"
+ 
+ struct Pertag {
+ 	unsigned int curtag, prevtag; /* current and previous tag */
+@@ -654,15 +662,18 @@
+ 			unmanage(m->stack, 0);
+ 	XUngrabKey(dpy, AnyKey, AnyModifier, root);
+ 	while (mons)
+ 		cleanupmon(mons);
+ 	for (i = 0; i < CurLast; i++)
+ 		drw_cur_free(drw, cursor[i]);
+-	for (i = 0; i < LENGTH(colors); i++)
+-		drw_scm_free(drw, scheme[i], 3);
+-	free(scheme);
++	for (i = 0; i < LENGTH(colorsdark); i++) {
++		drw_scm_free(drw, schemedark[i], 4);
++		drw_scm_free(drw, schemelight[i], 4);
++	}
++	free(schemedark);
++	free(schemelight);
+ 	XDestroyWindow(dpy, wmcheckwin);
+ 	drw_free(drw);
+ 	XSync(dpy, False);
+ 	XSetInputFocus(dpy, PointerRoot, RevertToPointerRoot, CurrentTime);
+ 	XDeleteProperty(dpy, root, netatom[NetActiveWindow]);
+ }
+@@ -709,12 +720,18 @@
+ 		if (c != selmon->sel && !c->isurgent)
+ 			seturgent(c, 1);
+ 	}
+ }
+ 
+ void
++colormodehandler(int sig)
++{
++	colormodechanged = 1;
++}
++
++void
+ configure(Client *c)
+ {
+ 	XConfigureEvent ce;
+ 
+ 	ce.type = ConfigureNotify;
+ 	ce.display = dpy;
+@@ -1643,12 +1660,16 @@
+ propertynotify(XEvent *e)
+ {
+ 	Client *c;
+ 	Window trans;
+ 	XPropertyEvent *ev = &e->xproperty;
+ 
++	if (colormodechanged) {
++		setcolormode();
++		colormodechanged = 0;
++	}
+ 	if ((ev->window == root) && (ev->atom == XA_WM_NAME))
+ 		updatestatus();
+ 	else if (ev->state == PropertyDelete)
+ 		return; /* ignore */
+ 	else if ((c = wintoclient(ev->window))) {
+ 		switch(ev->atom) {
+@@ -1926,12 +1947,96 @@
+ 		ev.xclient.data.l[1] = CurrentTime;
+ 		XSendEvent(dpy, c->win, False, NoEventMask, &ev);
+ 	}
+ 	return exists;
+ }
+ 
++static char *
++lightmodepath(void)
++{
++	static char *path = NULL;
++	const char *home;
++	size_t size;
++
++	if (!path && (home = getenv("HOME"))) {
++		size = strlen(home) + strlen("/.config/dwm/.lightmode") + 1;
++		path = malloc(size);
++		if (!path)
++			die("dwm: malloc failed");
++		snprintf(path, size, "%s/.config/dwm/.lightmode", home);
++	}
++	return path;
++}
++
++void
++setcolormode(void)
++{
++	char *path = lightmodepath();
++	Monitor *m;
++	Client *c;
++
++	if (path && access(path, F_OK) == 0) {
++		scheme = schemelight;
++		dmenucmd = dmenulight;
++	} else {
++		scheme = schemedark;
++		dmenucmd = dmenudark;
++	}
++
++	if (selmon && selmon->barwin)
++		drawbars();
++	for (m = mons; m; m = m->next) {
++		for (c = m->clients; c; c = c->next) {
++			XClassHint ch = { NULL, NULL };
++			XSetWindowBorder(dpy, c->win,
++				scheme[c == selmon->sel ? SchemeSel : SchemeNorm]
++				      [c->isfloating ? ColFloat : ColBorder].pixel);
++			if (XGetClassHint(dpy, c->win, &ch)) {
++				if ((ch.res_name && (!strcmp(ch.res_name, "st")
++						|| !strcmp(ch.res_name, "st-256color")))
++				 || (ch.res_class && (!strcmp(ch.res_class, "st")
++						|| !strcmp(ch.res_class, "st-256color")))) {
++					Atom stcm = XInternAtom(dpy, "ST_COLORMODE", False);
++					XEvent ev;
++
++					memset(&ev, 0, sizeof ev);
++					ev.xclient.type = ClientMessage;
++					ev.xclient.window = c->win;
++					ev.xclient.message_type = stcm;
++					ev.xclient.format = 32;
++					ev.xclient.data.l[0] = stcm;
++					XSendEvent(dpy, c->win, False, NoEventMask, &ev);
++				}
++				if (ch.res_name)
++					XFree(ch.res_name);
++				if (ch.res_class)
++					XFree(ch.res_class);
++			}
++		}
++	}
++}
++
++void
++togglecolormode(const Arg *arg)
++{
++	char *path = lightmodepath();
++	char dir[256];
++	const char *home;
++	int fd;
++
++	if (!path || !(home = getenv("HOME")))
++		return;
++	snprintf(dir, sizeof dir, "%s/.config/dwm", home);
++	mkdir(dir, 0755);
++	if (access(path, F_OK) == 0)
++		unlink(path);
++	else if ((fd = open(path, O_CREAT | O_WRONLY, 0644)) >= 0)
++		close(fd);
++	setcolormode();
++}
++
+ void
+ setfocus(Client *c)
+ {
+ 	if (!c->neverfocus) {
+ 		XSetInputFocus(dpy, c->win, RevertToPointerRoot, CurrentTime);
+ 		XChangeProperty(dpy, root, netatom[NetActiveWindow],
+@@ -2057,12 +2162,18 @@
+ 	/* reap children; cool-autostart needs waitpid for pid tracking */
+ 	sigemptyset(&sa.sa_mask);
+ 	sa.sa_flags = SA_NOCLDSTOP | SA_RESTART;
+ 	sa.sa_handler = sigchld;
+ 	sigaction(SIGCHLD, &sa, NULL);
+ 
++	/* switch color mode on SIGHUP (~/.config/dwm/.lightmode) */
++	sigemptyset(&sa.sa_mask);
++	sa.sa_flags = SA_RESTART;
++	sa.sa_handler = colormodehandler;
++	sigaction(SIGHUP, &sa, NULL);
++
+ 	/* clean up any zombies (inherited from .xinitrc etc) immediately */
+ 	while (waitpid(-1, NULL, WNOHANG) > 0);
+ 
+ 	/* init screen */
+ 	screen = DefaultScreen(dpy);
+ 	sw = DisplayWidth(dpy, screen);
+@@ -2097,16 +2208,20 @@
+ 	netatom[NetClientInfo] = XInternAtom(dpy, "_NET_CLIENT_INFO", False);
+ 	/* init cursors */
+ 	cursor[CurNormal] = drw_cur_create(drw, XC_left_ptr);
+ 	cursor[CurResize] = drw_cur_create(drw, XC_sizing);
+ 	cursor[CurMove] = drw_cur_create(drw, XC_fleur);
+ 	/* init appearance */
+-	scheme = ecalloc(LENGTH(colors), sizeof(Clr *));
++	schemedark = ecalloc(LENGTH(colorsdark), sizeof(Clr *));
++	schemelight = ecalloc(LENGTH(colorslight), sizeof(Clr *));
+ 	unsigned int alphas[] = {borderalpha, baralpha, OPAQUE, OPAQUE};
+-	for (i = 0; i < LENGTH(colors); i++)
+-		scheme[i] = drw_scm_create(drw, colors[i], alphas, 4);
++	for (i = 0; i < LENGTH(colorsdark); i++) {
++		schemedark[i] = drw_scm_create(drw, colorsdark[i], alphas, 4);
++		schemelight[i] = drw_scm_create(drw, colorslight[i], alphas, 4);
++	}
++	setcolormode();
+ 	/* init bars */
+ 	updatebars();
+ 	updatestatus();
+ 	updatebarpos(selmon);
+ 	/* supporting window for NetWMCheck */
+ 	wmcheckwin = XCreateSimpleWindow(dpy, root, 0, 0, 1, 1, 0, 0, 0);
+@@ -2205,12 +2320,19 @@
+ 		execvp(((char **)arg->v)[0], (char **)arg->v);
+ 		die("dwm: execvp '%s' failed:", ((char **)arg->v)[0]);
+ 	}
+ }
+ 
+ void
++spawndmenu(const Arg *arg)
++{
++	dmenumon[0] = '0' + selmon->num;
++	spawn(&(const Arg){.v = dmenucmd});
++}
++
++void
+ setclienttagprop(Client *c)
+ {
+ 	long data[] = { (long) c->tags, (long) c->mon->num };
+ 	XChangeProperty(dpy, c->win, netatom[NetClientInfo], XA_CARDINAL, 32,
+ 			PropModeReplace, (unsigned char *) data, 2);
+ }

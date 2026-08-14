@@ -1,0 +1,218 @@
+From: local
+Subject: [PATCH] centeredmaster adapted for dwm 6.8 + prior patches
+
+Replace stock tile with centeredmaster (default) and
+centeredfloatingmaster. Both honor functionalgaps/pertag.
+Super+u selects centeredmaster, Super+o centeredfloatingmaster.
+
+--- a/config.h
++++ b/config.h
+@@ -77,15 +77,16 @@
+ static const int resizehints = 1;    /* 1 means respect size hints in tiled resizals */
+ static const int lockfullscreen = 1; /* 1 will force focus on the fullscreen window */
+ static const int refreshrate = 60;  /* refresh rate (per second) for client move/resize */
+ 
+ static const Layout layouts[] = {
+ 	/* symbol     arrange function */
+-	{ " ",      tile },    /* first entry is default */
+-	{ " ",      NULL },    /* no layout function means floating behavior */
+-	{ " ",      monocle },
++	{ " ",      centeredmaster },           /* first entry is default */
++	{ " ",      NULL },                     /* no layout function means floating behavior */
++	{ " ",       monocle },
++	{ ">M>",     centeredfloatingmaster },
+ };
+ 
+ /* key definitions */
+ #define MODKEY Mod4Mask
+ #define TAGKEYS(KEY,TAG) \
+ { MODKEY,                       KEY,      view,           {.ui = 1 << TAG} }, \
+@@ -113,12 +114,14 @@
+ 	{ MODKEY,	    XK_h,		      setmfact,	      {.f = -0.05} },
+ 	{ MODKEY,	    XK_j,		      focusstack,     {.i = +1 } },
+ 	{ MODKEY,           XK_k,		      focusstack,     {.i = -1 } },
+ 	{ MODKEY,	    XK_l,		      setmfact,	      {.f = +0.05} },
+ 	{ MODKEY,	    XK_m,		      spawn,          SHCMD("st -e wiremix") },
+ 	{ MODKEY,	    XK_n,		      spawn,          SHCMD("wall") },
++	{ MODKEY,           XK_u,                     setlayout,      {.v = &layouts[0]} },
++	{ MODKEY,           XK_o,                     setlayout,      {.v = &layouts[3]} },
+ 	{ MODKEY,	    XK_equal,		      incnmaster,     {.i = +1 } },
+ 	{ MODKEY,	    XK_minus,		      incnmaster,     {.i = -1 } },
+ 	{ MODKEY,	    XK_z,		      zoom,	      {0} },
+ 	{ MODKEY,	    XK_Tab,		      view,	      {0} },
+ 	{ MODKEY,	    XK_space,		      togglefloating, {0} },
+ 	{ MODKEY,	    XK_0,		      view,	      {.ui = ~0 } },
+diff --git a/dwm.c b/dwm.c
+index 36aa6a8..0193700 100644
+--- a/dwm.c
++++ b/dwm.c
+@@ -237,13 +237,14 @@ static void setmfact(const Arg *arg);
+ static void setup(void);
+ static void seturgent(Client *c, int urg);
+ static void showhide(Client *c);
+ static void spawn(const Arg *arg);
+ static void tag(const Arg *arg);
+ static void tagmon(const Arg *arg);
+-static void tile(Monitor *m);
++static void centeredmaster(Monitor *m);
++static void centeredfloatingmaster(Monitor *m);
+ static void togglebar(const Arg *arg);
+ static void togglefloating(const Arg *arg);
+ static void toggleopacity(const Arg *arg);
+ static void toggletag(const Arg *arg);
+ static void toggleview(const Arg *arg);
+ static void unfocus(Client *c, int setfocus);
+@@ -2128,55 +2129,116 @@ tagmon(const Arg *arg)
+ 	if (!selmon->sel || !mons->next)
+ 		return;
+ 	sendmon(selmon->sel, dirtomon(arg->i));
+ }
+ 
+ void
+-tile(Monitor *m)
++centeredmaster(Monitor *m)
+ {
+-	unsigned int i, n, h, mw, my, ty;
++	unsigned int i, n, h, mw, mx, my, oty, ety, tw;
++	int g;
+ 	Client *c;
+ 
+ 	for (n = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), n++);
+ 	if (n == 0)
+ 		return;
+-	if (m->pertag->drawwithgaps[m->pertag->curtag]) { /* draw with fullgaps logic */
+-	        if (n > m->nmaster)
+-	                mw = m->nmaster ? m->ww * m->mfact : 0;
+-	        else
+-	                mw = m->ww - m->pertag->gappx[m->pertag->curtag];
+-	        for (i = 0, my = ty = m->pertag->gappx[m->pertag->curtag], c = nexttiled(m->clients); c; c = nexttiled(c->next), i++)
+-	                if (i < m->nmaster) {
+-	                        h = (m->wh - my) / (MIN(n, m->nmaster) - i) - m->pertag->gappx[m->pertag->curtag];
+-	                        resize(c, m->wx + m->pertag->gappx[m->pertag->curtag], m->wy + my, mw - (2*c->bw) - m->pertag->gappx[m->pertag->curtag], h - (2*c->bw), 0);
+-	                        if (my + HEIGHT(c) + m->pertag->gappx[m->pertag->curtag] < m->wh)
+-	                                my += HEIGHT(c) + m->pertag->gappx[m->pertag->curtag];
+-	                } else {
+-	                        h = (m->wh - ty) / (n - i) - m->pertag->gappx[m->pertag->curtag];
+-	                        resize(c, m->wx + mw + m->pertag->gappx[m->pertag->curtag], m->wy + ty, m->ww - mw - (2*c->bw) - 2*m->pertag->gappx[m->pertag->curtag], h - (2*c->bw), 0);
+-	                        if (ty + HEIGHT(c) + m->pertag->gappx[m->pertag->curtag] < m->wh)
+-	                                ty += HEIGHT(c) + m->pertag->gappx[m->pertag->curtag];
+-	                }
+-	} else { /* draw with singularborders logic */
+-	        if (n > m->nmaster)
+-	                mw = m->nmaster ? m->ww * m->mfact : 0;
+-	        else
+-	                mw = m->ww;
+-	        for (i = my = ty = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), i++)
+-	                if (i < m->nmaster) {
+-	                        h = (m->wh - my) / (MIN(n, m->nmaster) - i);
+-	                        if (n == 1)
+-	                                resize(c, m->wx - c->bw, m->wy, m->ww, m->wh, False);
+-	                        else
+-	                                resize(c, m->wx - c->bw, m->wy + my, mw - c->bw, h - c->bw, False);
+-	                        my += HEIGHT(c) - c->bw;
+-	                } else {
+-		              h = (m->wh - ty) / (n - i);
+-	                        resize(c, m->wx + mw - c->bw, m->wy + ty, m->ww - mw, h - c->bw, False);
+-	                        ty += HEIGHT(c) - c->bw;
+-	                }
++
++	g = m->pertag->drawwithgaps[m->pertag->curtag]
++	    ? m->pertag->gappx[m->pertag->curtag] : 0;
++
++	if (n > m->nmaster) {
++		if (n - m->nmaster > 1) {
++			/* g | left | g | master | g | right | g */
++			mw = m->nmaster ? (m->ww - 4 * g) * m->mfact : 0;
++			tw = (m->ww - 4 * g - mw) / 2;
++			mx = tw + 2 * g;
++		} else {
++			/* g | master | g | stack | g */
++			mw = m->nmaster ? (m->ww - 3 * g) * m->mfact : 0;
++			tw = m->ww - mw - 3 * g;
++			mx = g;
++		}
++	} else {
++		mw = m->ww - 2 * g;
++		tw = mw;
++		mx = g;
++	}
++
++	my = oty = ety = g;
++	for (i = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), i++) {
++		if (i < m->nmaster) {
++			h = (m->wh - my) / (MIN(n, m->nmaster) - i) - g;
++			resize(c, m->wx + mx, m->wy + my, mw - (2 * c->bw),
++			       h - (2 * c->bw), 0);
++			if (my + HEIGHT(c) + g < m->wh)
++				my += HEIGHT(c) + g;
++		} else if ((i - m->nmaster) % 2) {
++			h = (m->wh - ety) / ((1 + n - i) / 2) - g;
++			resize(c, m->wx + g, m->wy + ety, tw - (2 * c->bw),
++			       h - (2 * c->bw), 0);
++			if (ety + HEIGHT(c) + g < m->wh)
++				ety += HEIGHT(c) + g;
++		} else {
++			h = (m->wh - oty) / ((1 + n - i) / 2) - g;
++			resize(c, m->wx + mx + mw + g, m->wy + oty,
++			       tw - (2 * c->bw), h - (2 * c->bw), 0);
++			if (oty + HEIGHT(c) + g < m->wh)
++				oty += HEIGHT(c) + g;
++		}
++	}
++}
++
++void
++centeredfloatingmaster(Monitor *m)
++{
++	unsigned int i, n, w, mh, mw, mx, mxo, my, myo, tx;
++	int g;
++	Client *c;
++
++	for (n = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), n++);
++	if (n == 0)
++		return;
++
++	g = m->pertag->drawwithgaps[m->pertag->curtag]
++	    ? m->pertag->gappx[m->pertag->curtag] : 0;
++
++	if (n > m->nmaster) {
++		if (m->ww > m->wh) {
++			mw = m->nmaster ? m->ww * m->mfact : 0;
++			mh = m->nmaster ? m->wh * 0.9 : 0;
++		} else {
++			mh = m->nmaster ? m->wh * m->mfact : 0;
++			mw = m->nmaster ? m->ww * 0.9 : 0;
++		}
++		if (mw > (unsigned)(2 * g))
++			mw -= 2 * g;
++		if (mh > (unsigned)(2 * g))
++			mh -= 2 * g;
++		mx = mxo = (m->ww - mw) / 2;
++		my = myo = (m->wh - mh) / 2;
++	} else {
++		mh = m->wh - 2 * g;
++		mw = m->ww - 2 * g;
++		mx = mxo = g;
++		my = myo = g;
++	}
++
++	for (i = 0, tx = g, c = nexttiled(m->clients); c; c = nexttiled(c->next), i++) {
++		if (i < m->nmaster) {
++			w = (mw + mxo - mx) / (MIN(n, m->nmaster) - i);
++			resize(c, m->wx + mx, m->wy + my, w - (2 * c->bw),
++			       mh - (2 * c->bw), 0);
++			mx += WIDTH(c);
++			if (g && i + 1 < MIN(n, m->nmaster))
++				mx += g;
++		} else {
++			w = (m->ww - g - tx) / (n - i);
++			resize(c, m->wx + tx, m->wy + g, w - (2 * c->bw),
++			       m->wh - 2 * g - (2 * c->bw), 0);
++			tx += WIDTH(c) + g;
++		}
+ 	}
+ }
+ 
+ void
+ togglebar(const Arg *arg)
+ {
