@@ -18,7 +18,6 @@ drawing
 bugs
 ----
 
-* fix shift up/down (shift selection in emacs)
 * remove DEC test sequence when appropriate
 
 misc

@@ -1,0 +1,130 @@
+#!/bin/sh
+# Publish the current dwm theme polarity as the desktop color-scheme
+# (GTK, gsettings, xsettingsd, xdg-desktop-portal).
+# Apps with Auto / Day / Night (Grok, Brave, Firefox, Electron) follow this.
+
+set -eu
+
+cfg="${XDG_CONFIG_HOME:-${HOME:?HOME is unset}/.config}/dwm"
+name=
+mode=
+
+# dwm writes name/nvim/mode here on apply; hex lives in themes/ (compiled in).
+if [ -r "$cfg/active" ]; then
+	name=$(awk -F= '
+		$1 == "name" { gsub(/\r/, "", $2); print $2; exit }
+	' "$cfg/active")
+	mode=$(awk -F= '
+		$1 == "mode" { gsub(/\r/, "", $2); print $2; exit }
+	' "$cfg/active")
+fi
+if [ -z "$name" ] && [ -r "$cfg/current" ]; then
+	name=$(tr -d '\r\n' < "$cfg/current")
+fi
+name=${name:-nord}
+
+theme="$cfg/themes/$name"
+if [ "$mode" != dark ] && [ "$mode" != light ] && [ -r "$theme" ]; then
+	mode=$(awk -F= '
+		$1 == "mode" { gsub(/\r/, "", $2); print $2; exit }
+	' "$theme")
+	if [ "$mode" != dark ] && [ "$mode" != light ]; then
+		bg=$(awk -F= '
+			$1 == "bg" { gsub(/\r/, "", $2); print $2; exit }
+		' "$theme")
+		bg=${bg#\#}
+		case $bg in
+		[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]*)
+			r=$(printf '%d' "0x$(printf '%.2s' "$bg")")
+			g=$(printf '%d' "0x$(printf '%.2s' "${bg#??}")")
+			b=$(printf '%d' "0x$(printf '%.2s' "${bg#????}")")
+			if [ $((299 * r + 587 * g + 114 * b)) -ge 128000 ]; then
+				mode=light
+			else
+				mode=dark
+			fi
+			;;
+		*)
+			mode=dark
+			;;
+		esac
+	fi
+fi
+mode=${mode:-dark}
+
+mkdir -p "$cfg"
+printf '%s\n' "$mode" > "$cfg/appearance"
+
+if [ "$mode" = light ]; then
+	prefer=false
+	color_scheme=prefer-light
+	gtk_theme=Adwaita
+else
+	prefer=true
+	color_scheme=prefer-dark
+	gtk_theme=Adwaita-dark
+fi
+
+gtk_set_prefer_dark() {
+	file=$1
+	val=$2
+	dir=$(dirname "$file")
+	mkdir -p "$dir"
+	if [ ! -f "$file" ]; then
+		printf '[Settings]\ngtk-application-prefer-dark-theme=%s\n' "$val" > "$file"
+		return
+	fi
+	tmp=$(mktemp) || return 0
+	if grep -q '^gtk-application-prefer-dark-theme=' "$file"; then
+		sed "s/^gtk-application-prefer-dark-theme=.*/gtk-application-prefer-dark-theme=$val/" \
+			"$file" > "$tmp"
+	elif grep -q '^\[Settings\]' "$file"; then
+		awk -v v="$val" '
+			/^\[Settings\]/ {
+				print
+				print "gtk-application-prefer-dark-theme=" v
+				next
+			}
+			{ print }
+		' "$file" > "$tmp"
+	else
+		{
+			printf '[Settings]\ngtk-application-prefer-dark-theme=%s\n' "$val"
+			cat "$file"
+		} > "$tmp"
+	fi
+	mv "$tmp" "$file"
+}
+
+xdg="${XDG_CONFIG_HOME:-$HOME/.config}"
+gtk_set_prefer_dark "$xdg/gtk-3.0/settings.ini" "$prefer"
+gtk_set_prefer_dark "$xdg/gtk-4.0/settings.ini" "$prefer"
+
+if command -v gsettings >/dev/null 2>&1; then
+	gsettings set org.gnome.desktop.interface color-scheme "$color_scheme" 2>/dev/null || :
+	gsettings set org.gnome.desktop.interface gtk-theme "$gtk_theme" 2>/dev/null || :
+fi
+
+xsdir="$xdg/xsettingsd"
+xsconf="$xsdir/xsettingsd.conf"
+mkdir -p "$xsdir"
+if [ -f "$xsconf" ] && grep -q '^Net/ThemeName' "$xsconf"; then
+	tmp=$(mktemp) || exit 0
+	sed "s|^Net/ThemeName.*|Net/ThemeName \"$gtk_theme\"|" "$xsconf" > "$tmp"
+	mv "$tmp" "$xsconf"
+else
+	{
+		[ -f "$xsconf" ] && cat "$xsconf"
+		printf 'Net/ThemeName "%s"\n' "$gtk_theme"
+	} > "$xsconf.tmp"
+	mv "$xsconf.tmp" "$xsconf"
+fi
+if pid=$(pidof xsettingsd 2>/dev/null); then
+	kill -HUP $pid 2>/dev/null || :
+fi
+
+portals="$xdg/xdg-desktop-portal/portals.conf"
+if [ ! -f "$portals" ]; then
+	mkdir -p "$xdg/xdg-desktop-portal"
+	printf '[preferred]\ndefault=gtk\n' > "$portals"
+fi

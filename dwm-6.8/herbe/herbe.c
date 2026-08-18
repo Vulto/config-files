@@ -1,4 +1,6 @@
 #include <X11/Xlib.h>
+#include <X11/Xatom.h>
+#include <X11/Xutil.h>
 #include <X11/Xft/Xft.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -10,6 +12,7 @@
 #include <semaphore.h>
 
 #include "config.h"
+#include "../theme.h"
 
 #define EXIT_ACTION 0
 #define EXIT_FAIL 1
@@ -18,6 +21,62 @@
 Display *display;
 Window window;
 int exit_code = EXIT_DISMISS;
+static int screen;
+static Visual *visual;
+static Colormap colormap;
+static const char *background_color;
+static const char *border_color;
+static const char *font_color;
+static XftColor xft_bg, xft_border, xft_font;
+static int colors_loaded;
+static Atom dwmcolormodeatom;
+static XftDraw *draw;
+static XftFont *font;
+static char **lines;
+static int num_of_lines;
+static unsigned int text_height;
+
+static Theme herbetheme;
+
+static void
+setcolormode(void)
+{
+	char name[THEME_VAL];
+
+	theme_current_name(name, sizeof name);
+	if (theme_load(&herbetheme, name) < 0)
+		theme_load(&herbetheme, "nord");
+	background_color = herbetheme.bg;
+	border_color = herbetheme.border;
+	font_color = herbetheme.fg;
+
+	if (!display)
+		return;
+	if (colors_loaded) {
+		XftColorFree(display, visual, colormap, &xft_bg);
+		XftColorFree(display, visual, colormap, &xft_border);
+		XftColorFree(display, visual, colormap, &xft_font);
+	}
+	XftColorAllocName(display, visual, colormap, background_color, &xft_bg);
+	XftColorAllocName(display, visual, colormap, border_color, &xft_border);
+	XftColorAllocName(display, visual, colormap, font_color, &xft_font);
+	colors_loaded = 1;
+
+	if (window) {
+		int i;
+
+		XSetWindowBackground(display, window, xft_bg.pixel);
+		XSetWindowBorder(display, window, xft_border.pixel);
+		XClearWindow(display, window);
+		if (draw && font && lines) {
+			for (i = 0; i < num_of_lines; i++)
+				XftDrawStringUtf8(draw, &xft_font, font, padding,
+					line_spacing * i + text_height * (i + 1) + padding,
+					(FcChar8 *)lines[i], strlen(lines[i]));
+		}
+		XFlush(display);
+	}
+}
 
 static void die(const char *format, ...)
 {
@@ -137,29 +196,28 @@ int main(int argc, char *argv[])
 	if (!(display = XOpenDisplay(0)))
 		die("Cannot open display");
 
-	int screen = DefaultScreen(display);
-	Visual *visual = DefaultVisual(display, screen);
-	Colormap colormap = DefaultColormap(display, screen);
+	screen = DefaultScreen(display);
+	visual = DefaultVisual(display, screen);
+	colormap = DefaultColormap(display, screen);
+	dwmcolormodeatom = XInternAtom(display, "_DWM_COLORMODE", False);
+	setcolormode();
 
 	int screen_width = DisplayWidth(display, screen);
 	int screen_height = DisplayHeight(display, screen);
 
 	XSetWindowAttributes attributes;
 	attributes.override_redirect = True;
-	XftColor color;
-	XftColorAllocName(display, visual, colormap, background_color, &color);
-	attributes.background_pixel = color.pixel;
-	XftColorAllocName(display, visual, colormap, border_color, &color);
-	attributes.border_pixel = color.pixel;
+	attributes.background_pixel = xft_bg.pixel;
+	attributes.border_pixel = xft_border.pixel;
 
-	int num_of_lines = 0;
+	num_of_lines = 0;
 	int max_text_width = width - 2 * padding;
 	int lines_size = 5;
-	char **lines = malloc(lines_size * sizeof(char *));
+	lines = malloc(lines_size * sizeof(char *));
 	if (!lines)
 		die("malloc failed");
 
-	XftFont *font = XftFontOpenName(display, screen, font_pattern);
+	font = XftFontOpenName(display, screen, font_pattern);
 
 	for (int i = argi; i < argc; i++)
 	{
@@ -183,7 +241,7 @@ int main(int argc, char *argv[])
 
 	unsigned int x = pos_x;
 	unsigned int y = pos_y;
-	unsigned int text_height = font->ascent - font->descent;
+	text_height = font->ascent - font->descent;
 	unsigned int height = (num_of_lines - 1) * line_spacing + num_of_lines * text_height + 2 * padding;
 
 	if (corner == TOP_RIGHT || corner == BOTTOM_RIGHT)
@@ -195,10 +253,16 @@ int main(int argc, char *argv[])
 	window = XCreateWindow(display, RootWindow(display, screen), x, y, width, height, border_size, DefaultDepth(display, screen),
 						   CopyFromParent, visual, CWOverrideRedirect | CWBackPixel | CWBorderPixel, &attributes);
 
-	XftDraw *draw = XftDrawCreate(display, window, visual, colormap);
-	XftColorAllocName(display, visual, colormap, font_color, &color);
+	{
+		XClassHint ch = { "herbe", "herbe" };
+
+		XSetClassHint(display, window, &ch);
+	}
+
+	draw = XftDrawCreate(display, window, visual, colormap);
 
 	XSelectInput(display, window, ExposureMask | ButtonPress);
+	XSelectInput(display, RootWindow(display, screen), PropertyChangeMask);
 	XMapWindow(display, window);
 
 	sem_t *mutex = sem_open("/herbe", O_CREAT, 0644, 1);
@@ -219,8 +283,14 @@ int main(int argc, char *argv[])
 		{
 			XClearWindow(display, window);
 			for (int i = 0; i < num_of_lines; i++)
-				XftDrawStringUtf8(draw, &color, font, padding, line_spacing * i + text_height * (i + 1) + padding,
+				XftDrawStringUtf8(draw, &xft_font, font, padding, line_spacing * i + text_height * (i + 1) + padding,
 								  (FcChar8 *)lines[i], strlen(lines[i]));
+		}
+		else if (event.type == PropertyNotify)
+		{
+			if (event.xproperty.window == RootWindow(display, screen)
+			 && event.xproperty.atom == dwmcolormodeatom)
+				setcolormode();
 		}
 		else if (event.type == ButtonPress)
 		{
@@ -242,7 +312,11 @@ int main(int argc, char *argv[])
 
 	free(lines);
 	XftDrawDestroy(draw);
-	XftColorFree(display, visual, colormap, &color);
+	if (colors_loaded) {
+		XftColorFree(display, visual, colormap, &xft_bg);
+		XftColorFree(display, visual, colormap, &xft_border);
+		XftColorFree(display, visual, colormap, &xft_font);
+	}
 	XftFontClose(display, font);
 	XCloseDisplay(display);
 

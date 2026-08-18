@@ -1,0 +1,15 @@
+/*
+
+!libshlist
+
+!img
+img/*
+!img/raw-body.png
+
+!.gitignore
+!.gitmodules
+!CONTRIBUTING.md
+!LICENSE
+!Makefile
+!README.md
+!mons.sh

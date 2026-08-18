@@ -14,7 +14,12 @@ all: dmenu stest
 config.h:
 	cp config.def.h $@
 
-$(OBJ): arg.h config.h config.mk drw.h
+../theme_builtins.h:
+	${MAKE} -C .. theme_builtins.h
+
+dmenu.o: ../theme.h ../theme_builtins.h
+
+$(OBJ): arg.h config.h config.mk drw.h ../config.h
 
 dmenu: dmenu.o drw.o util.o
 	$(CC) -o $@ dmenu.o drw.o util.o $(LDFLAGS)

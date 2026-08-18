@@ -22,6 +22,7 @@ char *argv0;
 #include "arg.h"
 #include "st.h"
 #include "win.h"
+#include "../theme.h"
 
 /* types used in config.h */
 typedef struct {
@@ -66,6 +67,9 @@ static void setcolormode(void);
 
 /* config.h for applying patches and the configuration. */
 #include "config.h"
+
+static Theme sttheme;
+static const char *colorname[260];
 
 /* XEMBED messages */
 #define XEMBED_FOCUS_IN  4
@@ -2051,20 +2055,18 @@ usage(void)
 void
 setcolormode(void)
 {
-	static const char *file = ".config/dwm/.lightmode";
-	static char *path = NULL;
-	const char *home;
-	size_t size;
+	char name[THEME_VAL];
+	int i;
 
-	if (!path && (home = getenv("HOME"))) {
-		size = strlen(home) + 1 + strlen(file) + 1;
-		path = malloc(size);
-		if (!path)
-			die("malloc failed");
-		snprintf(path, size, "%s/%s", home, file);
-	}
-
-	colorname = (path && access(path, F_OK) == 0) ? colorslight : colorsdark;
+	theme_current_name(name, sizeof name);
+	if (theme_load(&sttheme, name) < 0)
+		theme_load(&sttheme, "nord");
+	for (i = 0; i < 16; i++)
+		colorname[i] = sttheme.term[i][0] ? sttheme.term[i] : "#000000";
+	colorname[256] = sttheme.termfg;
+	colorname[257] = sttheme.termbg;
+	colorname[258] = sttheme.termfg;
+	colorname[259] = sttheme.termbg;
 
 	if (xw.dpy) {
 		xloadcols();
@@ -2073,7 +2075,7 @@ setcolormode(void)
 }
 
 int
-main(int argc, char *argv[])
+st_main(int argc, char *argv[])
 {
 	xw.l = xw.t = 0;
 	xw.isfixed = False;

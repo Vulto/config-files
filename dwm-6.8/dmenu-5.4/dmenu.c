@@ -18,8 +18,8 @@
 #include <X11/extensions/Xrender.h>
 #include <X11/Xft/Xft.h>
 
-#include "drw.h"
-#include "util.h"
+#include "../drw.h"
+#include "../util.h"
 
 /* macros */
 #define INTERSECT(x,y,w,h,r)  (MAX(0, MIN((x)+(w),(r).x_org+(r).width)  - MAX((x),(r).x_org)) \
@@ -65,6 +65,29 @@ static int depth;
 static Colormap cmap;
 
 #include "config.h"
+#include "../theme.h"
+
+static Theme dmenutheme;
+
+static void
+applytheme(void)
+{
+	char name[THEME_VAL];
+
+	theme_current_name(name, sizeof name);
+	if (theme_load(&dmenutheme, name) < 0 && theme_load(&dmenutheme, "nord") < 0)
+		return;
+	colors[SchemeNorm][ColFg] = dmenutheme.fg;
+	colors[SchemeNorm][ColBg] = dmenutheme.bg;
+	colors[SchemeSel][ColFg] = dmenutheme.sel_fg;
+	colors[SchemeSel][ColBg] = dmenutheme.sel_bg;
+	colors[SchemeHp][ColFg] = dmenutheme.fg;
+	colors[SchemeHp][ColBg] = dmenutheme.bg;
+	colors[SchemeBorder][ColFg] = dmenutheme.sel_bg;
+	colors[SchemeBorder][ColBg] = dmenutheme.sel_bg;
+	colors[SchemePrompt][ColFg] = dmenutheme.fg;
+	colors[SchemePrompt][ColBg] = dmenutheme.bg;
+}
 
 static int (*fstrncmp)(const char *, const char *, size_t) = strncmp;
 static char *(*fstrstr)(const char *, const char *) = strstr;
@@ -697,7 +720,7 @@ static void
 setup(void)
 {
 	int x, y, i, j;
-	unsigned int du;
+	unsigned int du, hpad;
 	XSetWindowAttributes swa;
 	XIM xim;
 	Window w, dw, *dws;
@@ -710,7 +733,7 @@ setup(void)
 #endif
 	/* init appearance */
 	for (j = 0; j < SchemeLast; j++)
-		scheme[j] = drw_scm_create(drw, colors[j], 2, alphas[j]);
+		scheme[j] = drw_scm_create(drw, colors[j], alphas[j], 2);
 
 	clip = XInternAtom(dpy, "CLIPBOARD",   False);
 	utf8 = XInternAtom(dpy, "UTF8_STRING", False);
@@ -745,9 +768,10 @@ setup(void)
 				if (INTERSECT(x, y, 1, 1, info[i]) != 0)
 					break;
 
-		x = info[i].x_org + barpadh;
+		hpad = info[i].width * (100 - MIN(barw, 100)) / 200;
+		x = info[i].x_org + hpad;
 		y = info[i].y_org + (topbar ? barpadv : info[i].height - mh - barpadv);
-		mw = info[i].width - 2 * barpadh;
+		mw = info[i].width - 2 * hpad;
 		XFree(info);
 	} else
 #endif
@@ -755,9 +779,10 @@ setup(void)
 		if (!XGetWindowAttributes(dpy, parentwin, &wa))
 			die("could not get embedding window attributes: 0x%lx",
 			    parentwin);
-		x = barpadh;
+		hpad = wa.width * (100 - MIN(barw, 100)) / 200;
+		x = hpad;
 		y = topbar ? barpadv : wa.height - mh - barpadv;
-		mw = wa.width - 2 * barpadh;
+		mw = wa.width - 2 * hpad;
 	}
 	promptw = (prompt && *prompt) ? TEXTW(prompt) - lrpad / 4 : 0;
 	inputw = mw / 3; /* input width: ~33% of monitor width */
@@ -806,11 +831,12 @@ usage(void)
 }
 
 int
-main(int argc, char *argv[])
+dmenu_main(int argc, char *argv[])
 {
 	XWindowAttributes wa;
 	int i, fast = 0;
 
+	applytheme();
 	for (i = 1; i < argc; i++)
 		/* these options take no arguments */
 		if (!strcmp(argv[i], "-v")) {      /* prints version information */

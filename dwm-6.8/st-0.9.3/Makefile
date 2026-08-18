@@ -15,10 +15,13 @@ config.h:
 .c.o:
 	$(CC) $(STCFLAGS) -c $<
 
-st.o: config.h st.h win.h
-x.o: arg.h config.h st.h win.h
+../theme_builtins.h:
+	$(MAKE) -C .. theme_builtins.h
 
-$(OBJ): config.h config.mk
+st.o: config.h st.h win.h
+x.o: arg.h config.h st.h win.h ../theme.h ../theme_builtins.h
+
+$(OBJ): config.h config.mk ../config.h
 
 st: $(OBJ)
 	$(CC) -o $@ $(OBJ) $(STLDFLAGS)

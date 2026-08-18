@@ -78,6 +78,8 @@ typedef union {
 } Arg;
 
 void die(const char *, ...);
+void *ecalloc(size_t, size_t);
+
 void redraw(void);
 void draw(void);
 

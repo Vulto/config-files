@@ -8,7 +8,10 @@ all: herbe
 config.h: config.def.h
 	cp config.def.h config.h
 
-herbe: herbe.c config.h
+../theme_builtins.h:
+	$(MAKE) -C .. theme_builtins.h
+
+herbe: herbe.c config.h ../config.h ../theme.h ../theme_builtins.h
 	$(CC) herbe.c $(CFLAGS) -o herbe
 
 install: herbe
